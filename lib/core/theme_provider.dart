@@ -14,7 +14,7 @@ class ThemeProvider extends ChangeNotifier {
 
   Future<void> _loadSavedTheme() async {
     try {
-      final box = await Hive.openBox('settings');
+      final box = Hive.box('settings');
       final saved = box.get(_key, defaultValue: 'system') as String;
 
       _themeMode = switch (saved) {
@@ -35,7 +35,7 @@ class ThemeProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final box = await Hive.openBox('settings');
+      final box = Hive.box('settings');
       await box.put(_key, mode.name);
     } catch (_) {}
   }

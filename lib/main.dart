@@ -96,8 +96,12 @@ void main() async {
   Hive.registerAdapter(RepairCaseAdapter());
 
   // Open boxes once (they stay open for the whole app)
-  await Hive.openBox<RepairCase>('repair_cases');
-  await Hive.openBox('settings');
+  if (!Hive.isBoxOpen('repair_cases')) {
+    await Hive.openBox<RepairCase>('repair_cases');
+  }
+  if (!Hive.isBoxOpen('settings')) {
+    await Hive.openBox('settings');
+  }
 
   runApp(const MyApp());
 }
