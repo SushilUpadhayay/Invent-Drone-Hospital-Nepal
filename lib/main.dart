@@ -1,166 +1,70 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
-import 'package:sizer/sizer.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import 'package:provider/provider.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:hive/hive.dart';
+import 'data/models/repair_case.dart'; // <- replace with your path
+import 'hive_service.dart'; // the service above
 
-import 'core/theme_provider.dart';
-import 'presentation/auth/login_screen.dart';
-import 'presentation/home/home_screen.dart';
-
-// ────────────────────── Hive Model & Adapter ──────────────────────
-@HiveType(typeId: 0)
-class RepairCase extends HiveObject {
-  @HiveField(0)
-  String serialNumber;
-  @HiveField(1)
-  String droneModel;
-  @HiveField(2)
-  String customerName;
-  @HiveField(3)
-  int estimatedCost;
-  @HiveField(4)
-  DateTime admissionDate;
-  @HiveField(5)
-  DateTime? deadline;
-  @HiveField(6)
-  String assignedTo;
-  @HiveField(7)
-  String status;
-  @HiveField(8)
-  int? finalCost;
-  @HiveField(9)
-  DateTime? completionDate;
-
-  RepairCase({
-    required this.serialNumber,
-    required this.droneModel,
-    required this.customerName,
-    required this.estimatedCost,
-    required this.admissionDate,
-    this.deadline,
-    required this.assignedTo,
-    required this.status,
-    this.finalCost,
-    this.completionDate,
-  });
-}
-
-class RepairCaseAdapter extends TypeAdapter<RepairCase> {
-  @override
-  final int typeId = 0;
-
-  @override
-  RepairCase read(BinaryReader reader) => RepairCase(
-        serialNumber: reader.read(),
-        droneModel: reader.read(),
-        customerName: reader.read(),
-        estimatedCost: reader.read(),
-        admissionDate: DateTime.fromMillisecondsSinceEpoch(reader.read()),
-        deadline: reader.read() != null
-            ? DateTime.fromMillisecondsSinceEpoch(reader.read())
-            : null,
-        assignedTo: reader.read(),
-        status: reader.read(),
-        finalCost: reader.read(),
-        completionDate: reader.read() != null
-            ? DateTime.fromMillisecondsSinceEpoch(reader.read())
-            : null,
-      );
-
-  @override
-  void write(BinaryWriter writer, RepairCase obj) {
-    writer.write(obj.serialNumber);
-    writer.write(obj.droneModel);
-    writer.write(obj.customerName);
-    writer.write(obj.estimatedCost);
-    writer.write(obj.admissionDate.millisecondsSinceEpoch);
-    writer.write(obj.deadline?.millisecondsSinceEpoch);
-    writer.write(obj.assignedTo);
-    writer.write(obj.status);
-    writer.write(obj.finalCost);
-    writer.write(obj.completionDate?.millisecondsSinceEpoch);
-  }
-}
-
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final directory = await getApplicationDocumentsDirectory();
-  await Hive.initFlutter(directory.path);
-  Hive.registerAdapter(RepairCaseAdapter());
-  if (!Hive.isBoxOpen('repair_cases')) {
-    await Hive.openBox<RepairCase>('repair_cases');
-  }
-  if (!Hive.isBoxOpen('settings')) {
-    await Hive.openBox('settings');
-  }
+
+  // Initialize Hive safely. This is idempotent.
+  await HiveService.init();
 
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-      ],
-      child: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, child) {
-          return Sizer(
-            builder: (context, orientation, deviceType) {
-              return MaterialApp(
-                title: 'Invent - Drone Hospital Nepal',
-                debugShowCheckedModeBanner: false,
-                theme: ThemeData(
-                  useMaterial3: true,
-                  colorSchemeSeed: Colors.blue, // This works in Flutter 3.7+
-                  brightness: Brightness.light,
-                  fontFamily: 'Poppins',
-                ),
-                darkTheme: ThemeData(
-                  useMaterial3: true,
-                  colorSchemeSeed: Colors.blue,
-                  brightness: Brightness.dark,
-                  fontFamily: 'Poppins',
-                ),
-                themeMode: themeProvider.themeMode,
-                home: const AuthWrapper(),
-              );
-            },
-          );
-        },
-      ),
+    return MaterialApp(
+      title: 'App',
+      home: const RepairCasesHome(),
     );
   }
 }
 
-// ────────────────────── Auth Wrapper (FIXED) ──────────────────────
-class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({super.key});
+class RepairCasesHome extends StatefulWidget {
+  const RepairCasesHome({super.key});
+  @override
+  State<RepairCasesHome> createState() => _RepairCasesHomeState();
+}
+
+class _RepairCasesHomeState extends State<RepairCasesHome> {
+  late Box<RepairCase> box;
+
+  @override
+  void initState() {
+    super.initState();
+    // At this point main() already awaited HiveService.init(), so the box is open.
+    box = HiveService.repairBoxSync();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
-      future: _checkLoginStatus(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+    return Scaffold(
+      appBar: AppBar(title: const Text('Repair Cases')),
+      body: ValueListenableBuilder(
+        valueListenable: box.listenable(),
+        builder: (context, Box<RepairCase> b, _) {
+          if (b.isEmpty)
+            return const Center(child: Text('No repair cases yet'));
+          return ListView.builder(
+            itemCount: b.length,
+            itemBuilder: (context, i) {
+              final key = b.keyAt(i);
+              final item = b.get(key);
+              return ListTile(title: Text(item?.title ?? 'No title'));
+            },
           );
-        }
-        // Default to false if no data
-        final isLoggedIn = snapshot.data ?? false;
-        return isLoggedIn ? const HomeScreen() : const LoginScreen();
-      },
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          await box.add(RepairCase(
+              title: 'Case ${box.length + 1}', description: 'Added'));
+        },
+        child: const Icon(Icons.add),
+      ),
     );
-  }
-
-  Future<bool> _checkLoginStatus() async {
-    final box = Hive.box('settings');
-    return box.get('isLoggedIn', defaultValue: false) as bool;
   }
 }
