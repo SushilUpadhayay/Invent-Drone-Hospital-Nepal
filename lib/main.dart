@@ -84,20 +84,17 @@ class RepairCaseAdapter extends TypeAdapter<RepairCase> {
   }
 }
 
-// ────────────────────── MAIN APP ──────────────────────
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Proper Hive initialization
   final directory = await getApplicationDocumentsDirectory();
   await Hive.initFlutter(directory.path);
-
-  // Register adapter once
   Hive.registerAdapter(RepairCaseAdapter());
-
-  // Open boxes once (they stay open for the whole app)
-  await Hive.openBox<RepairCase>('repair_cases');
-  await Hive.openBox('settings');
+  if (!Hive.isBoxOpen('repair_cases')) {
+    await Hive.openBox<RepairCase>('repair_cases');
+  }
+  if (!Hive.isBoxOpen('settings')) {
+    await Hive.openBox('settings');
+  }
 
   runApp(const MyApp());
 }
